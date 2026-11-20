@@ -20,7 +20,7 @@ Run `node scripts/build.mjs` from the repository root with Node.js 22 or later. 
 | `RESEND_API_KEY` | A sending key. Set this as a runtime secret. |
 | `MEMBERSHIP_RATE_SECRET` | A randomly generated secret for hashing sign-in rate-limit identifiers. Set this as a runtime secret. |
 
-A standalone build uses email sign-in. The optional Sites integration for legacy ChatGPT accounts trusts identity headers supplied by the authenticated Sites gateway when the build includes an installation-specific `.openai/hosting.json`. Only supply that manifest when deploying through the Sites gateway that strips caller-supplied identity headers. Keep the manifest and secret values out of commits to this repository.
+A standalone build uses email sign-in. On Sites, members can join with a free ChatGPT account. The app reads identity headers supplied by the authenticated Sites gateway when the build includes an installation-specific `.openai/hosting.json`. Only supply that manifest when deploying through the Sites gateway that strips caller-supplied identity headers. Keep the manifest and secret values out of commits to this repository.
 
 ## License
 

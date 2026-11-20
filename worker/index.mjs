@@ -131,10 +131,9 @@ async function memberRoute(request, url, env, user, emailSession, isOrganizer) {
      FROM members WHERE account_id = ?`
   ).bind(user.accountId).first() : null;
   if (request.method === 'POST') {
-    if (!emailSession && !member) return transition('/membership');
+    if (!user) return transition('/membership');
     const fields = await postFields(request, url);
     if (!fields) return page('This membership change could not be verified.', 403);
-    if (fields.get('action') === 'join' && !emailSession) return transition('/membership');
     const result = await changeMembership(db, user, fields);
     const clearCookie = result === 'left' && emailSession ? await endEmailSession(request, env) : null;
     return transition(result ? '/membership?notice=' + result : '/membership', clearCookie);
@@ -142,7 +141,7 @@ async function memberRoute(request, url, env, user, emailSession, isOrganizer) {
 
   const ideas = member?.status === 'active' ? await latestIdeas(db) : [];
   return page(renderMembership({
-    signedIn: Boolean(emailSession || member), member, ideas, isOrganizer, canEmail: Boolean(user?.email),
+    signedIn: Boolean(user), member, ideas, isOrganizer, canEmail: Boolean(user?.email),
     notice: noticeAt(url), emailSignInReady: emailSignInReady(env), emailSession: Boolean(emailSession),
   }));
 }

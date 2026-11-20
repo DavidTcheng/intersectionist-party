@@ -115,19 +115,27 @@ export function renderMembership({
 }) {
   const status = renderNotice(notice);
   if (!signedIn) {
-    const signIn = emailSignInReady
+    const chatGPTSignIn = trustSitesIdentity
+      ? `<div class="member-actions">
+        <a href="/signin-with-chatgpt?return_to=%2Fmembership" target="_top" class="button button-secondary">Sign in with ChatGPT</a>
+      </div>
+      <p>A free ChatGPT account works.</p>`
+      : '';
+    const emailSignIn = emailSignInReady
       ? `<form method="post" action="/email-signin" class="member-form">
         <label class="field" for="sign-in-email">Email address</label>
         <input id="sign-in-email" name="email" type="email" autocomplete="email" maxlength="254" required aria-describedby="sign-in-email-help">
         <small id="sign-in-email-help">We store this address for sign-in. You can choose separately whether to get emails about ideas. <a href="/privacy">Privacy policy</a></small>
         <button type="submit" class="button button-secondary">Email me a sign-in link</button>
       </form>`
-      : '<p>Email sign-in is being set up.</p>';
+      : '';
+    const signInAvailable = trustSitesIdentity || emailSignInReady;
     return layout('Membership', '/membership', `${status}
     <section class="member-card" aria-labelledby="join-heading">
       <h2 id="join-heading">Join the Intersectionist Party</h2>
-      ${emailSignInReady ? '<p>Sign in to become a member, read new ideas, and choose whether to get email updates.</p>' : ''}
-      ${signIn}
+      ${signInAvailable ? '<p>Sign in to join, read ideas in development, and choose whether to get idea emails.</p>' : '<p>Email sign-in is being set up.</p>'}
+      ${chatGPTSignIn}
+      ${emailSignIn}
     </section>`);
   }
 
@@ -268,17 +276,21 @@ export function renderUnsubscribe({ token, done, valid }) {
 }
 
 export function renderPrivacy({ emailSignInReady = false, automaticEmail = false } = {}) {
-  const signIn = emailSignInReady
-    ? 'When you sign in by email, we store the email address used for your sign-in and use it to deliver sign-in links. Your optional idea-email preference is stored separately.'
-    : 'Email sign-in is being set up.';
+  const chatGPTSignIn = trustSitesIdentity
+    ? '<p>When you sign in with ChatGPT, OpenAI supplies an account identifier and, when available, an email address. We store an identifier derived from your account ID to recognize your membership. If you opt in to idea emails, we also store your address for those updates.</p>'
+    : '';
+  const emailSignIn = emailSignInReady
+    ? '<p>When you sign in by email, we store the email address used for your sign-in and use it to deliver sign-in links. Your optional idea-email preference is stored separately.</p>'
+    : '';
   const signInProviders = emailSignInReady
     ? '<p>An email delivery provider processes the address needed to deliver your sign-in link.</p>'
     : '';
   return layout('Privacy policy', '/privacy', `<p>Effective <time datetime="2026-11-20">November 20, 2026</time></p>
     <section class="member-card" aria-labelledby="privacy-data">
       <h2 id="privacy-data">Sign-in and membership</h2>
-      <p>The Intersectionist Party operates this site. ${signIn} We record your membership status, preferences, and the dates you join or make changes.</p>
-      <p>For memberships created through the earlier ChatGPT sign-in, we retain an identifier derived from the one OpenAI supplied to recognize those memberships.</p>
+      <p>The Intersectionist Party operates this site. We record your membership status, preferences, and the dates you join or make changes.</p>
+      ${chatGPTSignIn}
+      ${emailSignIn}
       <p>Other visitors and members cannot see your name, email address, or membership status.</p>
     </section>
     <section class="member-card" aria-labelledby="privacy-email">
@@ -298,6 +310,6 @@ export function renderPrivacy({ emailSignInReady = false, automaticEmail = false
       <h2 id="privacy-providers">Service providers</h2>
       <p>Hosting and infrastructure providers operate the systems that serve the site and store membership records.</p>
       ${signInProviders}
-      <p>For how OpenAI handled earlier ChatGPT sign-ins, see its <a href="https://openai.com/policies/privacy-policy/">privacy policy</a>.</p>
+      ${trustSitesIdentity ? '<p>For how OpenAI handles ChatGPT sign-in, see its <a href="https://openai.com/policies/privacy-policy/">privacy policy</a>.</p>' : ''}
     </section>`);
 }
