@@ -123,26 +123,49 @@ async function latestIdeas(db) {
   return out.results;
 }
 
+function ideaIdFrom(url) {
+  const id = url.searchParams.get('idea') ?? '';
+  return /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(id) ? id : null;
+}
+
+function memberPath(ideaId, notice) {
+  const query = new URLSearchParams();
+  if (ideaId) query.set('idea', ideaId);
+  if (notice) query.set('notice', notice);
+  return query.size ? '/membership?' + query : '/membership';
+}
+
+function findIdea(db, id) {
+  return db.prepare('SELECT id, title, body, published_at FROM ideas WHERE id = ?').bind(id).first();
+}
+
 async function memberRoute(request, url, env, user, emailSession, isOrganizer) {
   const db = env.DB;
+  const ideaId = ideaIdFrom(url);
+  const returnPath = memberPath(ideaId);
   const member = user ? await db.prepare(
     `SELECT status, joined_at AS joinedAt,
             CASE WHEN email_updates = 1 THEN contact_rate ELSE 'off' END AS contactRate
      FROM members WHERE account_id = ?`
   ).bind(user.accountId).first() : null;
   if (request.method === 'POST') {
-    if (!user) return transition('/membership');
+    if (!user) return transition(returnPath);
     const fields = await postFields(request, url);
     if (!fields) return page('This membership change could not be verified.', 403);
     const result = await changeMembership(db, user, fields);
     const clearCookie = result === 'left' && emailSession ? await endEmailSession(request, env) : null;
-    return transition(result ? '/membership?notice=' + result : '/membership', clearCookie);
+    return transition(memberPath(ideaId, result), clearCookie);
   }
 
-  const ideas = member?.status === 'active' ? await latestIdeas(db) : [];
+  let ideas = [];
+  if (member?.status === 'active') {
+    const selectedIdea = ideaId ? await findIdea(db, ideaId) : null;
+    ideas = ideaId ? (selectedIdea ? [selectedIdea] : []) : await latestIdeas(db);
+  }
   return page(renderMembership({
     signedIn: Boolean(user), member, ideas, isOrganizer, canEmail: Boolean(user?.email),
     notice: noticeAt(url), emailSignInReady: emailSignInReady(env), emailSession: Boolean(emailSession),
+    ideaId, returnPath,
   }));
 }
 
@@ -152,6 +175,7 @@ function ideaMessage(idea, recipient, origin) {
     text: [
       idea.body,
       'This idea is still in development.',
+      'Read the idea on the site: ' + origin + memberPath(idea.id),
       'Member ideas and preferences: ' + origin + '/membership',
       'Stop idea emails: ' + origin + '/unsubscribe?token=' + recipient.unsubscribe_token,
       'The Intersectionist Party',
@@ -193,18 +217,19 @@ async function dispatchIdea(env, idea, recipient, origin) {
   return 'emailUncertain';
 }
 
-async function renderOrganizerPage(env, id, notice, preparedDraft) {
+async function renderOrganizerPage(env, url, id, notice, preparedDraft) {
   const db = env.DB;
   const ideas = await latestIdeas(db);
   const selectedIdea = ideas.find(idea => idea.id === id)
-    ?? (id ? await db.prepare('SELECT id, title, body, published_at FROM ideas WHERE id = ?').bind(id).first() : null);
+    ?? (id ? await findIdea(db, id) : null);
   const recipients = selectedIdea
     ? (await db.prepare(`
       SELECT m.account_id AS accountId, m.email FROM members AS m
       WHERE ${dueForIdea} ORDER BY m.email, m.account_id
     `).bind(id, unixTime()).all()).results
     : [];
-  return page(renderOrganizer({ ideas, selectedIdea, recipients, preparedDraft, notice, automaticEmail: emailSignInReady(env) }));
+  const shareLink = selectedIdea ? (configuredOrigin(env) ?? url.origin) + memberPath(selectedIdea.id) : null;
+  return page(renderOrganizer({ ideas, selectedIdea, recipients, preparedDraft, notice, shareLink, automaticEmail: emailSignInReady(env) }));
 }
 
 async function contactMember(url, env, fields) {
@@ -243,7 +268,7 @@ async function contactMember(url, env, fields) {
     const address = encodeURIComponent(recipient.email).replaceAll('%40', '@');
     const draftHref = 'mailto:' + address + '?subject=' + encodeURIComponent(message.subject)
       + '&body=' + encodeURIComponent(message.text);
-    return renderOrganizerPage(env, id, notices.draftPrepared, { email: recipient.email, draftHref });
+    return renderOrganizerPage(env, url, id, notices.draftPrepared, { email: recipient.email, draftHref });
   }
 
   const result = await dispatchIdea(env, idea, recipient, origin);
@@ -275,7 +300,7 @@ async function organizerRoute(request, url, env) {
     return transition('/organize?idea=' + existing.id + '&notice=published');
   }
 
-  return renderOrganizerPage(env, url.searchParams.get('idea'), noticeAt(url));
+  return renderOrganizerPage(env, url, ideaIdFrom(url), noticeAt(url));
 }
 
 async function unsubscribeRoute(request, url, db) {
@@ -301,10 +326,12 @@ async function unsubscribeRoute(request, url, db) {
 
 async function emailSignInRoute(request, url, env, route) {
   const confirm = route === '/email-signin/confirm';
+  const ideaId = ideaIdFrom(url);
+  const returnPath = memberPath(ideaId);
   if (request.method !== 'POST') {
-    if (!confirm) return transition('/membership');
+    if (!confirm) return transition(returnPath);
     const token = url.searchParams.get('token') ?? '';
-    return page(renderEmailConfirmation({ token, valid: tokenPattern.test(token) }), 200, 'origin');
+    return page(renderEmailConfirmation({ token, valid: tokenPattern.test(token), ideaId, returnPath }), 200, 'origin');
   }
 
   const fields = await postFields(request, url);
@@ -313,12 +340,12 @@ async function emailSignInRoute(request, url, env, route) {
   if (confirm) {
     const verified = await redeemEmailLink(env, fields.get('token'), await visitor(request));
     return verified
-      ? transition('/membership', verified.sessionCookie)
-      : page(renderEmailConfirmation({ valid: false }), 400, 'origin');
+      ? transition(returnPath, verified.sessionCookie)
+      : page(renderEmailConfirmation({ valid: false, returnPath }), 400, 'origin');
   }
-  const result = await requestEmailLink(request, url, env, fields);
+  const result = await requestEmailLink(request, url, env, fields, ideaId);
   const notice = result === 'invalid' ? 'invalid' : result === 'unavailable' ? 'emailUnavailable' : 'emailRequested';
-  return transition('/membership?notice=' + notice);
+  return transition(memberPath(ideaId, notice));
 }
 
 export default {

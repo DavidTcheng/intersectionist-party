@@ -112,17 +112,18 @@ function renderIdeaList(ideas, organizer = false) {
 
 export function renderMembership({
   signedIn, member, ideas = [], isOrganizer, canEmail, notice, emailSignInReady = false, emailSession = false,
+  ideaId, returnPath = '/membership',
 }) {
   const status = renderNotice(notice);
   if (!signedIn) {
     const chatGPTSignIn = trustSitesIdentity
       ? `<div class="member-actions">
-        <a href="/signin-with-chatgpt?return_to=%2Fmembership" target="_top" class="button button-secondary">Sign in with ChatGPT</a>
+        <a href="/signin-with-chatgpt?return_to=${encodeURIComponent(returnPath)}" target="_top" class="button button-secondary">Sign in with ChatGPT</a>
       </div>
       <p>A free ChatGPT account works.</p>`
       : '';
     const emailSignIn = emailSignInReady
-      ? `<form method="post" action="/email-signin" class="member-form">
+      ? `<form method="post" action="/email-signin${ideaId ? '?idea=' + encodeURIComponent(ideaId) : ''}" class="member-form">
         <label class="field" for="sign-in-email">Email address</label>
         <input id="sign-in-email" name="email" type="email" autocomplete="email" maxlength="254" required aria-describedby="sign-in-email-help">
         <small id="sign-in-email-help">We store this address for sign-in. You can choose separately whether to get emails about ideas. <a href="/privacy">Privacy policy</a></small>
@@ -152,7 +153,7 @@ export function renderMembership({
     return layout('Membership', '/membership', `${status}
     <section class="member-card" aria-labelledby="join-heading">
       <h2 id="join-heading">Join the Intersectionist Party</h2>
-      <form method="post" action="/membership" class="member-form">
+      <form method="post" action="${escapeHtml(returnPath)}" class="member-form">
         <input type="hidden" name="action" value="join">
         ${canEmail ? emailRateFields() : ''}
         <button type="submit" class="button button-secondary">Join the party</button>
@@ -180,10 +181,12 @@ export function renderMembership({
        <p>Suspending your membership pauses access to member ideas and stops email updates. You can resume and opt in again later.</p>
        <div class="member-actions">${membershipAction('suspend', 'Suspend membership')}</div>`;
   const memberIdeas = suspended ? '' : `<section class="member-card" aria-labelledby="member-ideas">
-    <h2 id="member-ideas">Ideas in development</h2>
-    ${renderIdeaList(ideas)}
+    <h2 id="member-ideas">${ideaId ? 'Idea in development' : 'Ideas in development'}</h2>
+    ${ideaId && ideas.length === 0 ? '<p>This idea is unavailable.</p>' : renderIdeaList(ideas)}
+    ${ideaId ? '<p><a href="/membership">Browse all member ideas</a></p>' : ''}
   </section>`;
   return layout('Membership', '/membership', `${status}
+    ${ideaId ? memberIdeas : ''}
     <section class="member-card" aria-labelledby="membership-status">
       <h2 id="membership-status">${suspended ? 'Membership suspended' : 'Active membership'}</h2>
       ${joined}
@@ -194,7 +197,7 @@ export function renderMembership({
         <div class="member-actions">${membershipAction('leave', 'Leave and delete membership')}</div>
       </details>
     </section>
-    ${memberIdeas}
+    ${ideaId ? '' : memberIdeas}
     ${accountLinks}`);
 }
 
@@ -214,13 +217,21 @@ function recipientList(recipients, ideaId, automaticEmail) {
 }
 
 export function renderOrganizer({
-  ideas = [], selectedIdea, recipients = [], preparedDraft, automaticEmail = false, notice,
+  ideas = [], selectedIdea, recipients = [], preparedDraft, shareLink, automaticEmail = false, notice,
 }) {
   const draftHref = preparedDraft?.draftHref;
   const draft = !automaticEmail && typeof draftHref === 'string' && /^mailto:[^\r\n]+$/i.test(draftHref)
     ? `<p><a href="${escapeHtml(draftHref)}">Open draft for ${escapeHtml(preparedDraft.email)}</a></p>`
     : '';
-  const selected = selectedIdea ? `<section class="member-card" aria-labelledby="drafts-title">
+  const selected = selectedIdea ? `<section class="member-card" aria-labelledby="share-title">
+    <h2 id="share-title">Share this idea</h2>
+    <p>Copy the member link and share it through your chosen channel. Active members can open it after signing in.</p>
+    <div class="member-form">
+      <label for="share-link">Member link</label>
+      <input id="share-link" type="url" value="${escapeHtml(shareLink)}" readonly>
+    </div>
+  </section>
+  <section class="member-card" aria-labelledby="drafts-title">
     <h2 id="drafts-title">Email this idea</h2>
     <h3>${escapeHtml(selectedIdea.title)}</h3>
     <p>Only active members who opted in and are due for an update appear here. Weekly members can receive at most one idea email every seven days, and daily members at most one every 24 hours.</p>
@@ -248,14 +259,14 @@ export function renderOrganizer({
     </section>`);
 }
 
-export function renderEmailConfirmation({ token, valid }) {
+export function renderEmailConfirmation({ token, valid, ideaId, returnPath = '/membership' }) {
   const content = valid && token
     ? `<p>Confirm to sign in and open the membership page.</p>
-    <form method="post" action="/email-signin/confirm" class="member-form">
+    <form method="post" action="/email-signin/confirm${ideaId ? '?idea=' + encodeURIComponent(ideaId) : ''}" class="member-form">
       <input type="hidden" name="token" value="${escapeHtml(token)}">
       <button type="submit" class="button button-secondary">Confirm sign-in</button>
     </form>`
-    : '<p>This sign-in link is invalid or has expired. <a href="/membership">Request a new link</a>.</p>';
+    : `<p>This sign-in link is invalid or has expired. <a href="${escapeHtml(returnPath)}">Request a new link</a>.</p>`;
   return layout('Confirm email sign-in', '/membership', `<div class="member-card">${content}</div>`);
 }
 

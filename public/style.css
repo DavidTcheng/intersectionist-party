@@ -319,7 +319,7 @@ h2 {
   justify-items: start;
 }
 
-.member-form :is(input[type="text"], input[type="email"], select, textarea) {
+.member-form :is(input[type="text"], input[type="email"], input[type="url"], select, textarea) {
   width: 100%;
   padding: .62rem .75rem;
   border-radius: .2rem;

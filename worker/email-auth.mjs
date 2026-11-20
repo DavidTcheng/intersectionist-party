@@ -108,7 +108,7 @@ async function removeExpired(db, now) {
   ]);
 }
 
-export async function requestEmailLink(request, url, env, fields) {
+export async function requestEmailLink(request, url, env, fields, ideaId) {
   const email = normalizedEmail(fields.get('email'));
   if (!email || request.headers.get('Origin') !== url.origin) return 'invalid';
   if (!emailSignInReady(env)) return 'unavailable';
@@ -125,6 +125,7 @@ export async function requestEmailLink(request, url, env, fields) {
     pendingHash = await tokenHash(token);
     const link = new URL('/email-signin/confirm', configuredOrigin(env));
     link.searchParams.set('token', token);
+    if (ideaId) link.searchParams.set('idea', ideaId);
     await db.prepare('INSERT INTO party_email_links (token_hash, email, expires_at) VALUES (?, ?, ?)')
       .bind(pendingHash, email, now + linkLifetime).run();
 
