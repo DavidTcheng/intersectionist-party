@@ -1,0 +1,7 @@
+/dist/
+.openai/
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+.wrangler/
